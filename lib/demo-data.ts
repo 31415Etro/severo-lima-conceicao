@@ -101,7 +101,7 @@ export const demoMessages: Message[] = [
     sender_type: "BOT",
     sender_id: null,
     content:
-      "Ola! Voce esta falando com o atendimento do Severo, Lima & Conceicao. Para te direcionar corretamente, me informe seu nome e conte brevemente qual e o seu caso.",
+      "Olá! Eu sou a Clara, assistente virtual do escritório Severo, Lima & Conceição. Vou te ajudar no primeiro atendimento e direcionar seu caso para o advogado responsável. Para começar, poderia me informar seu nome e contar brevemente o que aconteceu?",
     direction: "OUTBOUND",
     delivery_status: "READ",
     created_at: new Date(Date.now() - 1000 * 60 * 21).toISOString(),
@@ -122,7 +122,7 @@ export const demoMessages: Message[] = [
     sender_type: "BOT",
     sender_id: null,
     content:
-      "Obrigado pelas informacoes. Pelo que voce relatou, seu caso parece estar relacionado a area previdenciaria. Vou direcionar seu atendimento para a Karine, responsavel por essa area. Ela dara continuidade por aqui.",
+      "Obrigada pelas informações. Pelo que você relatou, seu caso parece estar relacionado à área previdenciária. Vou direcionar seu atendimento para a Karine, responsável por essa área. Ela dará continuidade por aqui.",
     direction: "OUTBOUND",
     delivery_status: "READ",
     created_at: new Date(Date.now() - 1000 * 60 * 18).toISOString(),

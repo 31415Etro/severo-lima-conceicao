@@ -1,21 +1,21 @@
 import type { Area } from "@/lib/types";
 
 export const INITIAL_BOT_MESSAGE =
-  "Ola! Voce esta falando com o atendimento do Severo, Lima & Conceicao. Para te direcionar corretamente, me informe seu nome e conte brevemente qual e o seu caso.";
+  "Olá! Eu sou a Clara, assistente virtual do escritório Severo, Lima & Conceição. Vou te ajudar no primeiro atendimento e direcionar seu caso para o advogado responsável. Para começar, poderia me informar seu nome e contar brevemente o que aconteceu?";
 
 export const UNKNOWN_AREA_MESSAGE =
-  "Entendi. Para te direcionar corretamente, seu caso envolve INSS/aposentadoria, trabalho/emprego ou uma questao civil/familiar como divorcio, contrato, cobranca ou consumidor?";
+  "Entendi. Para eu te direcionar corretamente, seu caso envolve INSS ou aposentadoria, uma questão de trabalho/emprego, ou uma situação cível/familiar como divórcio, contrato, cobrança ou consumidor?";
 
 export const ALREADY_ASSIGNED_MESSAGE =
   "Seu atendimento ja foi direcionado para o responsavel pela area. Em breve ele dara continuidade por aqui.";
 
 export const ROUTING_MESSAGES: Record<Exclude<Area, "INDEFINIDO">, string> = {
   PREVIDENCIARIO:
-    "Obrigado pelas informacoes. Pelo que voce relatou, seu caso parece estar relacionado a area previdenciaria. Vou direcionar seu atendimento para a Karine, responsavel por essa area. Ela dara continuidade por aqui.",
+    "Obrigada pelas informações. Pelo que você relatou, seu caso parece estar relacionado à área previdenciária. Vou direcionar seu atendimento para a Karine, responsável por essa área. Ela dará continuidade por aqui.",
   TRABALHISTA:
-    "Obrigado pelas informacoes. Pelo que voce relatou, seu caso parece estar relacionado a area trabalhista. Vou direcionar seu atendimento para o Luiz, responsavel por essa area. Ele dara continuidade por aqui.",
+    "Obrigada pelas informações. Pelo que você relatou, seu caso parece estar relacionado à área trabalhista. Vou direcionar seu atendimento para o Luiz, responsável por essa área. Ele dará continuidade por aqui.",
   CIVEL_FAMILIA:
-    "Obrigado pelas informacoes. Pelo que voce relatou, seu caso parece estar relacionado a area civil ou de familia. Vou direcionar seu atendimento para a Ana, responsavel por essa area. Ela dara continuidade por aqui.",
+    "Obrigada pelas informações. Pelo que você relatou, seu caso parece estar relacionado à área cível ou de família. Vou direcionar seu atendimento para a Ana, responsável por essa área. Ela dará continuidade por aqui.",
 };
 
 const KEYWORDS: Record<Exclude<Area, "INDEFINIDO">, string[]> = {
@@ -33,6 +33,8 @@ const KEYWORDS: Record<Exclude<Area, "INDEFINIDO">, string[]> = {
     "previdencia",
     "previdenciario",
     "revisao de beneficio",
+    "afastamento",
+    "incapacidade",
   ],
   TRABALHISTA: [
     "demissao",
@@ -50,13 +52,19 @@ const KEYWORDS: Record<Exclude<Area, "INDEFINIDO">, string[]> = {
     "empresa nao pagou",
     "acidente de trabalho",
     "assedio no trabalho",
+    "verbas trabalhistas",
+    "problema com empregador",
+    "problemas com empregador",
+    "empregador",
   ],
   CIVEL_FAMILIA: [
     "divorcio",
     "guarda",
     "pensao alimenticia",
     "visita",
+    "visitas",
     "filho",
+    "filhos",
     "inventario",
     "heranca",
     "contrato",

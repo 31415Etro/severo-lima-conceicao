@@ -11,8 +11,13 @@ export function normalizePhone(phone: string) {
   return phone.replace(/\D/g, "");
 }
 
+function getZapiBaseUrl() {
+  const configured = process.env.ZAPI_BASE_URL || "https://api.z-api.io";
+  return configured.includes("/instances/") ? configured.split("/instances/")[0] : configured.replace(/\/$/, "");
+}
+
 export async function sendWhatsAppMessage(phone: string, message: string): Promise<ZapiResult> {
-  const baseUrl = process.env.ZAPI_BASE_URL || "https://api.z-api.io";
+  const baseUrl = getZapiBaseUrl();
   const instanceId = process.env.ZAPI_INSTANCE_ID;
   const token = process.env.ZAPI_TOKEN;
   const clientToken = process.env.ZAPI_CLIENT_TOKEN;
@@ -40,7 +45,7 @@ export async function sendWhatsAppMessage(phone: string, message: string): Promi
 }
 
 export async function updateZapiWebhook(path: string, body: Record<string, unknown>): Promise<ZapiConfigResult> {
-  const baseUrl = process.env.ZAPI_BASE_URL || "https://api.z-api.io";
+  const baseUrl = getZapiBaseUrl();
   const instanceId = process.env.ZAPI_INSTANCE_ID;
   const token = process.env.ZAPI_TOKEN;
   const clientToken = process.env.ZAPI_CLIENT_TOKEN;

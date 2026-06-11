@@ -26,7 +26,8 @@ export async function getLawyerByArea(area: Area) {
 async function saveBotMessage(
   conversationId: string,
   content: string,
-  zapi?: { messageId?: string; zaapId?: string; id?: string }
+  zapi?: { messageId?: string; zaapId?: string; id?: string },
+  error?: string
 ) {
   const supabase = createAdminClient();
   await supabase.from("messages").insert({
@@ -36,7 +37,8 @@ async function saveBotMessage(
     content,
     zapi_message_id: zapi?.messageId || zapi?.id || null,
     zapi_zaap_id: zapi?.zaapId || null,
-    delivery_status: zapi ? "QUEUED" : null,
+    delivery_status: error ? "ERROR" : zapi ? "QUEUED" : null,
+    delivery_error: error || null,
   });
 }
 
@@ -59,7 +61,7 @@ async function routeConversation(conversation: Conversation, area: Exclude<Area,
   const { data: contact } = await supabase.from("contacts").select("phone").eq("id", conversation.contact_id).single();
   const reply = ROUTING_MESSAGES[area];
   const result = contact?.phone ? await sendWhatsAppMessage(contact.phone, reply) : null;
-  await saveBotMessage(conversation.id, reply, result?.ok ? result.data : undefined);
+  await saveBotMessage(conversation.id, reply, result?.ok ? result.data : undefined, result && !result.ok ? result.error : undefined);
 }
 
 export async function classifyAndReply(conversationId: string) {
@@ -103,7 +105,7 @@ export async function classifyAndReply(conversationId: string) {
   if (clientMessages.length <= 1 && (simpleGreeting || joined.length < 30)) {
     const { data: contact } = await supabase.from("contacts").select("phone").eq("id", current.contact_id).single();
     const result = contact?.phone ? await sendWhatsAppMessage(contact.phone, INITIAL_BOT_MESSAGE) : null;
-    await saveBotMessage(conversationId, INITIAL_BOT_MESSAGE, result?.ok ? result.data : undefined);
+    await saveBotMessage(conversationId, INITIAL_BOT_MESSAGE, result?.ok ? result.data : undefined, result && !result.ok ? result.error : undefined);
     return;
   }
 
@@ -145,5 +147,5 @@ export async function classifyAndReply(conversationId: string) {
   const { data: contact } = await supabase.from("contacts").select("phone").eq("id", fresh.contact_id).single();
   const reply = ai.reply || UNKNOWN_AREA_MESSAGE;
   const result = contact?.phone ? await sendWhatsAppMessage(contact.phone, reply) : null;
-  await saveBotMessage(conversationId, reply, result?.ok ? result.data : undefined);
+  await saveBotMessage(conversationId, reply, result?.ok ? result.data : undefined, result && !result.ok ? result.error : undefined);
 }

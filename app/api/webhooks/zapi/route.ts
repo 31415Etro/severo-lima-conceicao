@@ -3,13 +3,41 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizePhone } from "@/lib/zapi";
 import { classifyAndReply } from "@/lib/triage";
 
+function readText(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value !== "object") return String(value);
+
+  const object = value as Record<string, unknown>;
+  const candidates = [
+    object.message,
+    object.text,
+    object.body,
+    object.content,
+    object.value,
+    object.caption,
+  ];
+
+  for (const candidate of candidates) {
+    const text = readText(candidate);
+    if (text) return text;
+  }
+
+  return "";
+}
+
 function extractPayload(payload: Record<string, unknown>) {
   const fromMe = payload.fromMe === true || payload.fromMe === "true";
   const phone = String(payload.phone || payload.senderPhone || payload.from || payload.chatId || "");
   const text =
-    String(payload.text || "") ||
-    String((payload as { message?: { text?: string } }).message?.text || "") ||
-    String((payload as { textMessage?: { message?: string } }).textMessage?.message || "");
+    readText(payload.text) ||
+    readText(payload.message) ||
+    readText(payload.textMessage) ||
+    readText(payload.caption) ||
+    readText(payload.image) ||
+    readText(payload.audio) ||
+    readText(payload.video) ||
+    readText(payload.document);
   const messageId = String(payload.messageId || payload.id || "");
   const zaapId = String(payload.zaapId || "");
   const senderName = String(payload.senderName || payload.pushName || "");

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { describeImageFromUrl, transcribeAudioFromUrl } from "@/lib/openai";
 import { normalizePhone } from "@/lib/zapi";
 import { classifyAndReply } from "@/lib/triage";
 
@@ -45,7 +46,63 @@ function extractPayload(payload: Record<string, unknown>) {
   const status = String(payload.status || "");
   const error = typeof payload.error === "string" ? payload.error : null;
   const ids = Array.isArray(payload.ids) ? payload.ids.map(String) : [];
-  return { fromMe, phone: normalizePhone(phone), text: text.trim().slice(0, 4000), messageId, zaapId, senderName, type, status, error, ids };
+  const media = extractMedia(payload);
+  return { fromMe, phone: normalizePhone(phone), text: text.trim().slice(0, 4000), messageId, zaapId, senderName, type, status, error, ids, media };
+}
+
+function readFirstString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function findMediaUrl(source: Record<string, unknown>) {
+  return readFirstString(
+    source.url,
+    source.mediaUrl,
+    source.media_url,
+    source.downloadUrl,
+    source.fileUrl,
+    source.audioUrl,
+    source.imageUrl,
+    source.videoUrl,
+    source.documentUrl,
+    source.thumbnailUrl
+  );
+}
+
+function extractMedia(payload: Record<string, unknown>) {
+  const sources = [
+    { type: "IMAGE", data: asObject(payload.image) },
+    { type: "AUDIO", data: asObject(payload.audio) },
+    { type: "VIDEO", data: asObject(payload.video) },
+    { type: "DOCUMENT", data: asObject(payload.document) },
+    { type: "IMAGE", data: asObject(payload.imageMessage) },
+    { type: "AUDIO", data: asObject(payload.audioMessage) },
+    { type: "VIDEO", data: asObject(payload.videoMessage) },
+    { type: "DOCUMENT", data: asObject(payload.documentMessage) },
+    { type: String(payload.type || "").toUpperCase(), data: payload },
+  ];
+
+  for (const source of sources) {
+    const url = findMediaUrl(source.data);
+    if (!url) continue;
+    const normalizedType = ["IMAGE", "AUDIO", "VIDEO", "DOCUMENT"].includes(source.type) ? source.type : "DOCUMENT";
+    return {
+      type: normalizedType as "IMAGE" | "AUDIO" | "VIDEO" | "DOCUMENT",
+      url,
+      mimeType: readFirstString(source.data.mimeType, source.data.mimetype, source.data.contentType),
+      filename: readFirstString(source.data.fileName, source.data.filename, source.data.name),
+      caption: readText(source.data.caption) || readText(payload.caption),
+    };
+  }
+
+  return null;
 }
 
 async function findExistingMessage(supabase: ReturnType<typeof createAdminClient>, messageId: string, zaapId: string) {
@@ -131,7 +188,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, event: parsed.type });
   }
 
-  if (!parsed.phone || parsed.text.length < 1) return NextResponse.json({ error: "Invalid Z-API payload" }, { status: 400 });
+  if (!parsed.phone || (parsed.text.length < 1 && !parsed.media)) return NextResponse.json({ error: "Invalid Z-API payload" }, { status: 400 });
 
   const supabase = createAdminClient();
   const now = new Date().toISOString();
@@ -151,12 +208,31 @@ export async function POST(request: NextRequest) {
   const existingMessage = await findExistingMessage(supabase, parsed.messageId, parsed.zaapId);
   if (existingMessage) return NextResponse.json({ ok: true, ignored: "duplicate" });
 
+  let messageContent = parsed.text;
+  let mediaTranscription: string | null = null;
+
+  if (parsed.media?.type === "AUDIO") {
+    mediaTranscription = await transcribeAudioFromUrl(parsed.media.url);
+    messageContent = mediaTranscription ? `Audio transcrito: ${mediaTranscription}` : "Audio recebido.";
+  } else if (parsed.media?.type === "IMAGE") {
+    const description = await describeImageFromUrl(parsed.media.url, parsed.media.caption || parsed.text);
+    mediaTranscription = description;
+    messageContent = [parsed.media.caption || parsed.text, description ? `Imagem recebida: ${description}` : "Imagem recebida."].filter(Boolean).join("\n");
+  } else if (parsed.media && !messageContent) {
+    messageContent = `${parsed.media.type === "DOCUMENT" ? "Documento" : "Arquivo"} recebido${parsed.media.filename ? `: ${parsed.media.filename}` : "."}`;
+  }
+
   if (parsed.fromMe) {
     await supabase.from("messages").insert({
       conversation_id: conversation.id,
       sender_type: "SYSTEM",
       direction: "OUTBOUND",
-      content: parsed.text,
+      content: messageContent,
+      media_type: parsed.media?.type || "TEXT",
+      media_url: parsed.media?.url || null,
+      media_mime_type: parsed.media?.mimeType || null,
+      media_filename: parsed.media?.filename || null,
+      media_transcription: mediaTranscription,
       zapi_message_id: parsed.messageId || null,
       zapi_zaap_id: parsed.zaapId || null,
       delivery_status: "SENT",
@@ -174,7 +250,12 @@ export async function POST(request: NextRequest) {
     conversation_id: conversation.id,
     sender_type: "CLIENT",
     direction: "INBOUND",
-    content: parsed.text,
+    content: messageContent,
+    media_type: parsed.media?.type || "TEXT",
+    media_url: parsed.media?.url || null,
+    media_mime_type: parsed.media?.mimeType || null,
+    media_filename: parsed.media?.filename || null,
+    media_transcription: mediaTranscription,
     zapi_message_id: parsed.messageId || null,
     zapi_zaap_id: parsed.zaapId || null,
     delivery_status: "RECEIVED",
@@ -192,7 +273,7 @@ export async function POST(request: NextRequest) {
   if (!conversation.ai_enabled) return NextResponse.json({ ok: true, ai: "disabled" });
   if (conversation.status !== "BOT_TRIAGEM") return NextResponse.json({ ok: true, ai: "status_skip" });
   if (conversation.assigned_lawyer_id) return NextResponse.json({ ok: true, ai: "assigned_skip" });
-  if (parsed.text.length < 2) return NextResponse.json({ ok: true, ai: "short_skip" });
+  if (messageContent.length < 2) return NextResponse.json({ ok: true, ai: "short_skip" });
 
   await classifyAndReply(conversation.id);
   return NextResponse.json({ ok: true });

@@ -42,6 +42,34 @@ async function saveBotMessage(
   });
 }
 
+function splitBotReply(message: string) {
+  const blocks = message
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (blocks.length > 1) return blocks.slice(0, 3);
+
+  if (message.length <= 170) return [message];
+  const sentences = message.match(/[^.!?]+[.!?]+/g)?.map((part) => part.trim()).filter(Boolean) || [message];
+  const chunks: string[] = [];
+  for (const sentence of sentences) {
+    const last = chunks[chunks.length - 1];
+    if (last && `${last} ${sentence}`.length <= 170) {
+      chunks[chunks.length - 1] = `${last} ${sentence}`;
+    } else {
+      chunks.push(sentence);
+    }
+  }
+  return chunks.slice(0, 3);
+}
+
+async function sendAndSaveBotMessages(conversationId: string, phone: string | null | undefined, message: string) {
+  for (const chunk of splitBotReply(message)) {
+    const result = phone ? await sendWhatsAppMessage(phone, chunk) : null;
+    await saveBotMessage(conversationId, chunk, result?.ok ? result.data : undefined, result && !result.ok ? result.error : undefined);
+  }
+}
+
 async function routeConversation(conversation: Conversation, area: Exclude<Area, "INDEFINIDO">, confidence: number, summary: string) {
   const supabase = createAdminClient();
   const lawyer = await getLawyerByArea(area);
@@ -60,8 +88,7 @@ async function routeConversation(conversation: Conversation, area: Exclude<Area,
 
   const { data: contact } = await supabase.from("contacts").select("phone").eq("id", conversation.contact_id).single();
   const reply = ROUTING_MESSAGES[area];
-  const result = contact?.phone ? await sendWhatsAppMessage(contact.phone, reply) : null;
-  await saveBotMessage(conversation.id, reply, result?.ok ? result.data : undefined, result && !result.ok ? result.error : undefined);
+  await sendAndSaveBotMessages(conversation.id, contact?.phone, reply);
 }
 
 export async function classifyAndReply(conversationId: string) {
@@ -104,8 +131,7 @@ export async function classifyAndReply(conversationId: string) {
   const simpleGreeting = ["oi", "ola", "olá", "bom dia", "boa tarde", "boa noite"].includes(normalizedJoined);
   if (clientMessages.length <= 1 && (simpleGreeting || joined.length < 30)) {
     const { data: contact } = await supabase.from("contacts").select("phone").eq("id", current.contact_id).single();
-    const result = contact?.phone ? await sendWhatsAppMessage(contact.phone, INITIAL_BOT_MESSAGE) : null;
-    await saveBotMessage(conversationId, INITIAL_BOT_MESSAGE, result?.ok ? result.data : undefined, result && !result.ok ? result.error : undefined);
+    await sendAndSaveBotMessages(conversationId, contact?.phone, INITIAL_BOT_MESSAGE);
     return;
   }
 
@@ -146,6 +172,5 @@ export async function classifyAndReply(conversationId: string) {
 
   const { data: contact } = await supabase.from("contacts").select("phone").eq("id", fresh.contact_id).single();
   const reply = ai.reply || UNKNOWN_AREA_MESSAGE;
-  const result = contact?.phone ? await sendWhatsAppMessage(contact.phone, reply) : null;
-  await saveBotMessage(conversationId, reply, result?.ok ? result.data : undefined, result && !result.ok ? result.error : undefined);
+  await sendAndSaveBotMessages(conversationId, contact?.phone, reply);
 }

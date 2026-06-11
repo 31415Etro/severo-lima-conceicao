@@ -16,6 +16,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4.1-mini
+OPENAI_TRANSCRIPTION_MODEL=whisper-1
+OPENAI_VISION_MODEL=gpt-4.1-mini
 ZAPI_INSTANCE_ID=
 ZAPI_TOKEN=
 ZAPI_CLIENT_TOKEN=
@@ -68,6 +70,8 @@ O `schema.sql` adiciona `contacts`, `conversations` e `messages` na publicacao `
 ## Economia de IA
 
 O sistema tenta classificar por palavras-chave antes da OpenAI. Exemplos como INSS, rescisao e divorcio sao direcionados sem gastar tokens. A IA usa somente as ultimas 6 mensagens, texto limitado, `temperature 0.2` e resposta curta em JSON. Troque `OPENAI_MODEL` para um modelo mais barato disponivel na sua conta.
+
+Audio e imagem recebidos pelo WhatsApp tambem sao salvos em `messages`. Quando houver URL publica da Z-API, o painel exibe player de audio ou preview da imagem. Audios podem ser transcritos com `OPENAI_TRANSCRIPTION_MODEL`; imagens podem receber uma descricao curta com `OPENAI_VISION_MODEL` para auxiliar a triagem.
 
 ## Fluxo
 

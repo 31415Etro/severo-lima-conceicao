@@ -39,6 +39,11 @@ create table if not exists messages (
   sender_id uuid references profiles(id) on delete set null,
   content text not null,
   direction text not null check (direction in ('INBOUND','OUTBOUND')),
+  media_type text check (media_type in ('TEXT','IMAGE','AUDIO','VIDEO','DOCUMENT')),
+  media_url text,
+  media_mime_type text,
+  media_filename text,
+  media_transcription text,
   zapi_message_id text,
   zapi_zaap_id text,
   delivery_status text check (delivery_status in ('QUEUED','SENT','RECEIVED','READ','READ_BY_ME','PLAYED','ERROR')),
@@ -75,6 +80,7 @@ create index if not exists idx_conversations_ai_enabled on conversations(ai_enab
 create index if not exists idx_messages_conversation_created on messages(conversation_id, created_at);
 create index if not exists idx_messages_zapi_message_id on messages(zapi_message_id);
 create index if not exists idx_messages_zapi_zaap_id on messages(zapi_zaap_id);
+create index if not exists idx_messages_media_type on messages(media_type);
 
 do $$
 begin

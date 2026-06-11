@@ -32,6 +32,11 @@ export type Message = {
   sender_id: string | null;
   content: string;
   direction: "INBOUND" | "OUTBOUND";
+  media_type?: "TEXT" | "IMAGE" | "AUDIO" | "VIDEO" | "DOCUMENT" | null;
+  media_url?: string | null;
+  media_mime_type?: string | null;
+  media_filename?: string | null;
+  media_transcription?: string | null;
   zapi_message_id?: string | null;
   zapi_zaap_id?: string | null;
   delivery_status?: "QUEUED" | "SENT" | "RECEIVED" | "READ" | "READ_BY_ME" | "PLAYED" | "ERROR" | null;

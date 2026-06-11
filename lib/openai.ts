@@ -20,6 +20,7 @@ Sua função é receber os clientes pelo WhatsApp de forma educada, humana, acol
 Você não é advogada e não deve dar parecer jurídico, orientação jurídica definitiva, prometer resultado, calcular valores, garantir direitos ou substituir a análise de um advogado.
 
 Você deve falar sempre em português do Brasil, com tom cordial, claro, elegante e objetivo. Evite respostas robóticas. Converse como uma atendente cuidadosa, prestativa e profissional.
+Escreva mensagens curtas, naturais e fáceis de ler no WhatsApp. Quando a resposta tiver mais de uma ideia, separe em blocos curtos usando uma linha em branco.
 
 Ao iniciar uma nova conversa, apresente-se assim:
 "Olá! Eu sou a Clara, assistente virtual do escritório Severo, Lima & Conceição. Vou te ajudar no primeiro atendimento e direcionar seu caso para o advogado responsável. Para começar, poderia me informar seu nome e contar brevemente o que aconteceu?"
@@ -63,6 +64,7 @@ Regras importantes:
 - Não peça documentos sensíveis logo no início.
 - Não solicite CPF, RG ou dados bancários.
 - Se precisar de mais contexto, faça no máximo duas perguntas objetivas.
+- Evite blocos longos de texto. Prefira frases curtas e, se necessário, duas mensagens/blocos.
 - Depois de identificar a área, direcione imediatamente para o advogado correto.
 - Depois que a conversa for direcionada ou assumida por um advogado, a IA deve parar de responder.
 - Se o cliente mandar nova mensagem depois do direcionamento, apenas salve a mensagem no sistema e não responda automaticamente.
@@ -118,4 +120,72 @@ export async function classifyWithOpenAI(messages: string[]): Promise<AiClassifi
     input_tokens: data.usage?.prompt_tokens,
     output_tokens: data.usage?.completion_tokens,
   };
+}
+
+export async function transcribeAudioFromUrl(url: string): Promise<string | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  const model = process.env.OPENAI_TRANSCRIPTION_MODEL || "whisper-1";
+  if (!apiKey || !url) return null;
+
+  try {
+    const audioResponse = await fetch(url);
+    if (!audioResponse.ok) return null;
+    const audioBlob = await audioResponse.blob();
+    const form = new FormData();
+    form.append("file", audioBlob, "audio.ogg");
+    form.append("model", model);
+    form.append("language", "pt");
+    form.append("response_format", "json");
+
+    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return String(data.text || "").trim().slice(0, 3000) || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function describeImageFromUrl(url: string, caption?: string): Promise<string | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  const model = process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || "gpt-4.1-mini";
+  if (!apiKey || !url) return null;
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.1,
+        max_tokens: 180,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Descreva brevemente a imagem recebida no WhatsApp para auxiliar uma triagem juridica. Nao de parecer juridico. Responda em portugues do Brasil, em uma frase objetiva.",
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: caption ? `Legenda enviada pelo cliente: ${caption}` : "Imagem enviada pelo cliente." },
+              { type: "image_url", image_url: { url } },
+            ],
+          },
+        ],
+      }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return String(data.choices?.[0]?.message?.content || "").trim().slice(0, 1000) || null;
+  } catch {
+    return null;
+  }
 }

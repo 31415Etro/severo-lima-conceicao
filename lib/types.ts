@@ -1,4 +1,4 @@
-export type Area = "PREVIDENCIARIO" | "TRABALHISTA" | "CIVEL_FAMILIA" | "INDEFINIDO";
+export type Area = "PREVIDENCIARIO" | "TRABALHISTA" | "CIVEL_FAMILIA" | "INDEFINIDO" | "FORA_ESCOPO";
 export type ConversationStatus = "BOT_TRIAGEM" | "AGUARDANDO_ADVOGADO" | "EM_ATENDIMENTO" | "ENCERRADO";
 export type Role = "ADMIN" | "LAWYER";
 

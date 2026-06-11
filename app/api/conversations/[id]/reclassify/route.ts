@@ -3,7 +3,7 @@ import { requireApiProfile, loadConversationForApi } from "@/lib/api-auth";
 import { getLawyerByArea } from "@/lib/triage";
 import type { Area } from "@/lib/types";
 
-const AREAS = new Set(["PREVIDENCIARIO", "TRABALHISTA", "CIVEL_FAMILIA", "INDEFINIDO"]);
+const AREAS = new Set(["PREVIDENCIARIO", "TRABALHISTA", "CIVEL_FAMILIA", "INDEFINIDO", "FORA_ESCOPO"]);
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const auth = await requireApiProfile();

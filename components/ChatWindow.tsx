@@ -145,6 +145,7 @@ export function ChatWindow({
                       <option value="TRABALHISTA">Trabalhista</option>
                       <option value="CIVEL_FAMILIA">Civil/Familia</option>
                       <option value="INDEFINIDO">Indefinido</option>
+                      <option value="FORA_ESCOPO">Fora do escopo</option>
                     </select>
                     <select
                       className="rounded border border-[#d8deec] px-3 py-2 text-sm"

@@ -72,6 +72,7 @@ export default async function ConversationsPage({
             <option value="TRABALHISTA">Trabalhista</option>
             <option value="CIVEL_FAMILIA">Civil/Familia</option>
             <option value="INDEFINIDO">Indefinido</option>
+            <option value="FORA_ESCOPO">Fora do escopo</option>
           </select>
           {profile.role === "ADMIN" && (
             <select name="lawyer" defaultValue={params.lawyer || ""} className="rounded border border-line px-3 py-2 text-sm">

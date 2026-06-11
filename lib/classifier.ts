@@ -6,10 +6,15 @@ export const INITIAL_BOT_MESSAGE =
 export const UNKNOWN_AREA_MESSAGE =
   "Entendi. Para eu te direcionar corretamente, seu caso envolve INSS ou aposentadoria, uma questão de trabalho/emprego, ou uma situação cível/familiar como divórcio, contrato, cobrança ou consumidor?";
 
+export const OUT_OF_SCOPE_MESSAGE =
+  "Obrigada por explicar. No momento, o escritório Severo, Lima & Conceição atende casos nas áreas previdenciária, trabalhista, cível e de família.\n\nPelo que você relatou, sua demanda parece estar fora dessas áreas. Por isso, infelizmente não conseguimos seguir com esse atendimento por aqui.";
+
 export const ALREADY_ASSIGNED_MESSAGE =
   "Seu atendimento ja foi direcionado para o responsavel pela area. Em breve ele dara continuidade por aqui.";
 
-export const ROUTING_MESSAGES: Record<Exclude<Area, "INDEFINIDO">, string> = {
+export type RoutableArea = Extract<Area, "PREVIDENCIARIO" | "TRABALHISTA" | "CIVEL_FAMILIA">;
+
+export const ROUTING_MESSAGES: Record<RoutableArea, string> = {
   PREVIDENCIARIO:
     "Obrigada pelas informações. Pelo que você relatou, seu caso parece estar relacionado à área previdenciária. Vou direcionar seu atendimento para a Karine, responsável por essa área. Ela dará continuidade por aqui.",
   TRABALHISTA:
@@ -18,7 +23,7 @@ export const ROUTING_MESSAGES: Record<Exclude<Area, "INDEFINIDO">, string> = {
     "Obrigada pelas informações. Pelo que você relatou, seu caso parece estar relacionado à área cível ou de família. Vou direcionar seu atendimento para a Ana, responsável por essa área. Ela dará continuidade por aqui.",
 };
 
-const KEYWORDS: Record<Exclude<Area, "INDEFINIDO">, string[]> = {
+const KEYWORDS: Record<RoutableArea, string[]> = {
   PREVIDENCIARIO: [
     "inss",
     "aposentadoria",
@@ -102,6 +107,6 @@ export function classifyByKeywords(text: string): { area: Area; confidence: numb
   return { area: winner.area, confidence, matched: winner.matched };
 }
 
-export function isRoutableArea(area: Area): area is Exclude<Area, "INDEFINIDO"> {
-  return area !== "INDEFINIDO";
+export function isRoutableArea(area: Area): area is RoutableArea {
+  return area !== "INDEFINIDO" && area !== "FORA_ESCOPO";
 }

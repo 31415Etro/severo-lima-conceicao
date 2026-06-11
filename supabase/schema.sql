@@ -21,7 +21,7 @@ create table if not exists conversations (
   id uuid primary key default gen_random_uuid(),
   contact_id uuid not null references contacts(id) on delete cascade,
   assigned_lawyer_id uuid references profiles(id) on delete set null,
-  area text not null default 'INDEFINIDO' check (area in ('PREVIDENCIARIO','TRABALHISTA','CIVEL_FAMILIA','INDEFINIDO')),
+  area text not null default 'INDEFINIDO' check (area in ('PREVIDENCIARIO','TRABALHISTA','CIVEL_FAMILIA','INDEFINIDO','FORA_ESCOPO')),
   status text not null default 'BOT_TRIAGEM' check (status in ('BOT_TRIAGEM','AGUARDANDO_ADVOGADO','EM_ATENDIMENTO','ENCERRADO')),
   ai_enabled boolean not null default true,
   summary text,

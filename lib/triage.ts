@@ -4,6 +4,7 @@ import {
   INITIAL_BOT_MESSAGE,
   isRoutableArea,
   normalizeText,
+  OUT_OF_SCOPE_MESSAGE,
   ROUTING_MESSAGES,
   UNKNOWN_AREA_MESSAGE,
 } from "@/lib/classifier";
@@ -12,7 +13,7 @@ import { sendWhatsAppMessage } from "@/lib/zapi";
 import type { Area, Conversation } from "@/lib/types";
 
 export async function getLawyerByArea(area: Area) {
-  if (area === "INDEFINIDO") return null;
+  if (area === "INDEFINIDO" || area === "FORA_ESCOPO") return null;
   const supabase = createAdminClient();
   const { data } = await supabase
     .from("profiles")
@@ -70,7 +71,7 @@ async function sendAndSaveBotMessages(conversationId: string, phone: string | nu
   }
 }
 
-async function routeConversation(conversation: Conversation, area: Exclude<Area, "INDEFINIDO">, confidence: number, summary: string) {
+async function routeConversation(conversation: Conversation, area: "PREVIDENCIARIO" | "TRABALHISTA" | "CIVEL_FAMILIA", confidence: number, summary: string) {
   const supabase = createAdminClient();
   const lawyer = await getLawyerByArea(area);
   await supabase
@@ -89,6 +90,25 @@ async function routeConversation(conversation: Conversation, area: Exclude<Area,
   const { data: contact } = await supabase.from("contacts").select("phone").eq("id", conversation.contact_id).single();
   const reply = ROUTING_MESSAGES[area];
   await sendAndSaveBotMessages(conversation.id, contact?.phone, reply);
+}
+
+async function closeOutOfScopeConversation(conversation: Conversation, confidence: number, summary: string) {
+  const supabase = createAdminClient();
+  await supabase
+    .from("conversations")
+    .update({
+      area: "FORA_ESCOPO",
+      confidence,
+      summary,
+      assigned_lawyer_id: null,
+      status: "ENCERRADO",
+      ai_enabled: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", conversation.id);
+
+  const { data: contact } = await supabase.from("contacts").select("phone").eq("id", conversation.contact_id).single();
+  await sendAndSaveBotMessages(conversation.id, contact?.phone, OUT_OF_SCOPE_MESSAGE);
 }
 
 export async function classifyAndReply(conversationId: string) {
@@ -157,6 +177,11 @@ export async function classifyAndReply(conversationId: string) {
 
   if (isRoutableArea(ai.area) && ai.confidence >= 0.75 && !ai.needs_more_info) {
     await routeConversation(fresh as Conversation, ai.area, ai.confidence, ai.summary);
+    return;
+  }
+
+  if (ai.area === "FORA_ESCOPO" && ai.confidence >= 0.7 && !ai.needs_more_info) {
+    await closeOutOfScopeConversation(fresh as Conversation, ai.confidence, ai.summary);
     return;
   }
 

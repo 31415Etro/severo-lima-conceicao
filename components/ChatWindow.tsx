@@ -45,6 +45,20 @@ export function ChatWindow({
     router.refresh();
   }
 
+  async function resetConversation() {
+    if (!confirm("Resetar esta conversa? O histórico atual será apagado e a IA voltará a tratar como cliente novo.")) return;
+    setBusy(true);
+    const response = await fetch(`/api/conversations/${conversation.id}/reset`, { method: "POST" });
+    const data = await response.json().catch(() => null);
+    setBusy(false);
+    if (response.ok && data?.conversationId) {
+      router.push(`/conversations/${data.conversationId}`);
+      router.refresh();
+      return;
+    }
+    alert(data?.error || "Não foi possível resetar a conversa.");
+  }
+
   async function send() {
     if (!content.trim()) return;
     await post(`/api/conversations/${conversation.id}/send`, { content });
@@ -129,6 +143,9 @@ export function ChatWindow({
                 </button>
                 <button disabled={busy} onClick={() => post(`/api/conversations/${conversation.id}/disable-ai`)} className="rounded border border-[#d8deec] px-3 py-2 text-sm font-medium text-ink hover:bg-navySoft">
                   Desligar IA
+                </button>
+                <button disabled={busy} onClick={resetConversation} className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100">
+                  Resetar conversa para teste
                 </button>
                 {profile.role === "ADMIN" && (
                   <>

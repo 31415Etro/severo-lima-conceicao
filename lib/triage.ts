@@ -12,6 +12,8 @@ import { classifyWithOpenAI } from "@/lib/openai";
 import { sendWhatsAppMessage } from "@/lib/zapi";
 import type { Area, Conversation } from "@/lib/types";
 
+type RoutableArea = "PREVIDENCIARIO" | "TRABALHISTA" | "CIVEL_FAMILIA";
+
 export async function getLawyerByArea(area: Area) {
   if (area === "INDEFINIDO" || area === "FORA_ESCOPO") return null;
   const supabase = createAdminClient();
@@ -36,6 +38,7 @@ async function saveBotMessage(
     sender_type: "BOT",
     direction: "OUTBOUND",
     content,
+    media_type: "TEXT",
     zapi_message_id: zapi?.messageId || zapi?.id || null,
     zapi_zaap_id: zapi?.zaapId || null,
     delivery_status: error ? "ERROR" : zapi ? "QUEUED" : null,
@@ -71,7 +74,7 @@ async function sendAndSaveBotMessages(conversationId: string, phone: string | nu
   }
 }
 
-async function routeConversation(conversation: Conversation, area: "PREVIDENCIARIO" | "TRABALHISTA" | "CIVEL_FAMILIA", confidence: number, summary: string) {
+async function routeConversation(conversation: Conversation, area: RoutableArea, confidence: number, summary: string) {
   const supabase = createAdminClient();
   const lawyer = await getLawyerByArea(area);
   await supabase
@@ -88,8 +91,7 @@ async function routeConversation(conversation: Conversation, area: "PREVIDENCIAR
     .eq("id", conversation.id);
 
   const { data: contact } = await supabase.from("contacts").select("phone").eq("id", conversation.contact_id).single();
-  const reply = ROUTING_MESSAGES[area];
-  await sendAndSaveBotMessages(conversation.id, contact?.phone, reply);
+  await sendAndSaveBotMessages(conversation.id, contact?.phone, ROUTING_MESSAGES[area]);
 }
 
 async function closeOutOfScopeConversation(conversation: Conversation, confidence: number, summary: string) {
@@ -127,13 +129,28 @@ export async function classifyAndReply(conversationId: string) {
     .select("content,sender_type,created_at")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
-    .limit(6);
+    .limit(8);
 
   const ordered = (messages || []).reverse();
-  const joined = ordered.map((message) => String(message.content || "")).join("\n").trim();
-  if (joined.length < 2) return;
+  const clientMessages = ordered.filter((message) => message.sender_type === "CLIENT");
+  const clientJoined = clientMessages.map((message) => String(message.content || "")).join("\n").trim();
+  const latestClientText = String(clientMessages.at(-1)?.content || "").trim();
+  if (clientJoined.length < 2) return;
 
-  const keyword = classifyByKeywords(joined);
+  const latestKeyword = classifyByKeywords(latestClientText);
+  if (isRoutableArea(latestKeyword.area) && latestKeyword.confidence >= 0.8) {
+    await supabase.from("ai_logs").insert({
+      conversation_id: conversationId,
+      model: "keywords",
+      classification: latestKeyword.area,
+      confidence: latestKeyword.confidence,
+      cost_estimate: 0,
+    });
+    await routeConversation(current, latestKeyword.area, latestKeyword.confidence, clientJoined.slice(0, 1000));
+    return;
+  }
+
+  const keyword = classifyByKeywords(clientJoined);
   if (isRoutableArea(keyword.area) && keyword.confidence >= 0.8) {
     await supabase.from("ai_logs").insert({
       conversation_id: conversationId,
@@ -142,14 +159,13 @@ export async function classifyAndReply(conversationId: string) {
       confidence: keyword.confidence,
       cost_estimate: 0,
     });
-    await routeConversation(current, keyword.area, keyword.confidence, joined.slice(0, 1000));
+    await routeConversation(current, keyword.area, keyword.confidence, clientJoined.slice(0, 1000));
     return;
   }
 
-  const clientMessages = ordered.filter((message) => message.sender_type === "CLIENT");
-  const normalizedJoined = normalizeText(joined);
-  const simpleGreeting = ["oi", "ola", "olá", "bom dia", "boa tarde", "boa noite"].includes(normalizedJoined);
-  if (clientMessages.length <= 1 && (simpleGreeting || joined.length < 30)) {
+  const normalizedClientText = normalizeText(clientJoined);
+  const simpleGreeting = ["oi", "ola", "bom dia", "boa tarde", "boa noite"].includes(normalizedClientText);
+  if (clientMessages.length <= 1 && (simpleGreeting || clientJoined.length < 30)) {
     const { data: contact } = await supabase.from("contacts").select("phone").eq("id", current.contact_id).single();
     await sendAndSaveBotMessages(conversationId, contact?.phone, INITIAL_BOT_MESSAGE);
     return;
@@ -157,7 +173,7 @@ export async function classifyAndReply(conversationId: string) {
 
   let ai;
   try {
-    ai = await classifyWithOpenAI(ordered.map((message) => `${message.sender_type}: ${message.content}`));
+    ai = await classifyWithOpenAI(clientMessages.map((message) => `CLIENT: ${message.content}`));
   } catch {
     return;
   }
@@ -196,6 +212,5 @@ export async function classifyAndReply(conversationId: string) {
     .eq("id", conversationId);
 
   const { data: contact } = await supabase.from("contacts").select("phone").eq("id", fresh.contact_id).single();
-  const reply = ai.reply || UNKNOWN_AREA_MESSAGE;
-  await sendAndSaveBotMessages(conversationId, contact?.phone, reply);
+  await sendAndSaveBotMessages(conversationId, contact?.phone, ai.reply || UNKNOWN_AREA_MESSAGE);
 }

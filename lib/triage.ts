@@ -26,6 +26,20 @@ export async function getLawyerByArea(area: Area) {
   return data;
 }
 
+async function getLawyerMentioned(text: string) {
+  const normalized = normalizeText(text);
+  if (!normalized) return null;
+  const words = normalized.split(" ");
+
+  const supabase = createAdminClient();
+  const { data: lawyers } = await supabase.from("profiles").select("id,name,email,role,specialty").eq("role", "LAWYER");
+  return (lawyers || []).find((lawyer) => {
+    const normalizedName = normalizeText(String(lawyer.name || ""));
+    const firstName = normalizedName.split(" ")[0];
+    return Boolean(firstName && firstName.length >= 3 && (normalized.includes(normalizedName) || words.includes(firstName)));
+  });
+}
+
 async function saveBotMessage(
   conversationId: string,
   content: string,
@@ -144,6 +158,30 @@ async function routeConversation(conversation: Conversation, area: RoutableArea,
   await sendAndSaveBotMessages(conversation.id, contact?.phone, ROUTING_MESSAGES[area]);
 }
 
+async function routeConversationToLawyer(conversation: Conversation, lawyer: { id: string; name: string; specialty: Area | null }, summary: string) {
+  const supabase = createAdminClient();
+  const area = isRoutableArea(lawyer.specialty || "INDEFINIDO") ? lawyer.specialty : "INDEFINIDO";
+  await supabase
+    .from("conversations")
+    .update({
+      area,
+      confidence: 0.95,
+      summary,
+      assigned_lawyer_id: lawyer.id,
+      status: "AGUARDANDO_ADVOGADO",
+      ai_enabled: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", conversation.id);
+
+  const { data: contact } = await supabase.from("contacts").select("phone").eq("id", conversation.contact_id).single();
+  await sendAndSaveBotMessages(
+    conversation.id,
+    contact?.phone,
+    `Certo, vou direcionar seu atendimento para ${lawyer.name}.\n\nA continuidade será feita por aqui.`
+  );
+}
+
 async function closeOutOfScopeConversation(conversation: Conversation, confidence: number, summary: string) {
   const supabase = createAdminClient();
   await supabase
@@ -188,6 +226,19 @@ export async function classifyAndReply(conversationId: string) {
   const clientJoined = clientMessages.map(textForTriage).join("\n").trim();
   const latestClientText = textForTriage(clientMessages.at(-1) || { content: "" });
   if (clientJoined.length < 2) return;
+
+  const mentionedLawyer = await getLawyerMentioned(latestClientText);
+  if (mentionedLawyer) {
+    await supabase.from("ai_logs").insert({
+      conversation_id: conversationId,
+      model: "lawyer-name",
+      classification: mentionedLawyer.specialty || "INDEFINIDO",
+      confidence: 0.95,
+      cost_estimate: 0,
+    });
+    await routeConversationToLawyer(current, mentionedLawyer as { id: string; name: string; specialty: Area | null }, clientJoined.slice(0, 1000));
+    return;
+  }
 
   const latestKeyword = classifyByKeywords(latestClientText);
   if (isRoutableArea(latestKeyword.area) && latestKeyword.confidence >= 0.8) {

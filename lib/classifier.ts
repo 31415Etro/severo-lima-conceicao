@@ -1,7 +1,7 @@
 import type { Area } from "@/lib/types";
 
 export const INITIAL_BOT_MESSAGE =
-  "Olá, tudo bem? Eu sou a Clara, do atendimento inicial do Severo, Lima & Conceição.\n\nPara eu localizar ou direcionar seu atendimento, pode me dizer seu nome e me contar em poucas palavras se você já é cliente ou se é um novo caso?";
+  "Olá, tudo bem? Eu sou a Clara, do atendimento inicial do Severo, Lima & Conceição.\n\nSe você já é cliente, me diga seu nome e com qual advogado quer falar: Ana, Karine ou Luiz.\n\nSe for um novo caso, me conte em poucas palavras o assunto para eu direcionar corretamente.";
 
 export const UNKNOWN_AREA_MESSAGE =
   "Entendi. Só para eu te encaminhar corretamente: o seu caso envolve INSS ou aposentadoria, trabalho ou emprego, ou uma questão cível ou familiar, como divórcio, contrato, cobrança ou consumidor?";

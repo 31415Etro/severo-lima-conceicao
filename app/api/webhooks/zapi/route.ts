@@ -231,6 +231,29 @@ async function updateMessageDelivery(payload: ReturnType<typeof extractPayload>)
   }
 }
 
+async function hasClientConversationHistory(supabase: ReturnType<typeof createAdminClient>, contactId: string) {
+  const { data: conversations } = await supabase
+    .from("conversations")
+    .select("id,assigned_lawyer_id")
+    .eq("contact_id", contactId)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (!conversations?.length) return false;
+  if (conversations.some((conversation) => conversation.assigned_lawyer_id)) return true;
+
+  const conversationIds = conversations.map((conversation) => conversation.id);
+  const { data: clientMessage } = await supabase
+    .from("messages")
+    .select("id")
+    .in("conversation_id", conversationIds)
+    .eq("sender_type", "CLIENT")
+    .limit(1)
+    .maybeSingle();
+
+  return Boolean(clientMessage);
+}
+
 async function getOrCreateConversation(
   supabase: ReturnType<typeof createAdminClient>,
   contactId: string,
@@ -305,6 +328,10 @@ export async function POST(request: NextRequest) {
   const { data: existingContact } = await supabase.from("contacts").select("*").eq("phone", parsed.phone).maybeSingle();
   let contact = existingContact;
 
+  if (parsed.fromMe && !contact) {
+    return NextResponse.json({ ok: true, ignored: "sent_by_me_unknown_contact" });
+  }
+
   if (contact) {
     const shouldReplaceName = contactName && (!contact.name || isOfficeName(String(contact.name)));
     const shouldClearOfficeName = !contactName && contact.name && isOfficeName(String(contact.name));
@@ -328,6 +355,13 @@ export async function POST(request: NextRequest) {
   }
 
   if (!contact) return NextResponse.json({ error: "Could not save contact" }, { status: 500 });
+
+  if (parsed.fromMe) {
+    const hasKnownClientHistory = await hasClientConversationHistory(supabase, contact.id);
+    if (!hasKnownClientHistory) {
+      return NextResponse.json({ ok: true, ignored: "sent_by_me_without_client_history" });
+    }
+  }
 
   const conversation = await getOrCreateConversation(supabase, contact.id, now, parsed.fromMe);
 

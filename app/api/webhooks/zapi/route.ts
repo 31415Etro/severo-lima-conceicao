@@ -27,9 +27,30 @@ function readText(value: unknown): string {
   return "";
 }
 
+function readPhone(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value !== "string" && typeof value !== "number") continue;
+    const phone = normalizePhone(String(value));
+    if (phone.length >= 10 && phone.length <= 15) return phone;
+  }
+  return "";
+}
+
+function isGroupOrBroadcast(value: unknown) {
+  const text = String(value || "").toLowerCase();
+  return text.includes("@g.us") || text.includes("group") || text.includes("broadcast") || text.includes("status@broadcast");
+}
+
 function extractPayload(payload: Record<string, unknown>) {
   const fromMe = payload.fromMe === true || payload.fromMe === "true";
-  const phone = String(payload.phone || payload.senderPhone || payload.from || payload.chatId || "");
+  const rawChat = String(payload.chatId || payload.chat || payload.from || payload.to || "");
+  const isGroup = payload.isGroup === true || payload.isGroup === "true" || isGroupOrBroadcast(rawChat) || isGroupOrBroadcast(payload.phone);
+  const connectedPhone = readPhone(payload.connectedPhone, payload.ownerPhone, payload.instancePhone, payload.me, payload.phoneConnected);
+  const inboundPhone = readPhone(payload.phone, payload.senderPhone, payload.from, payload.chatId);
+  const outboundPhone = readPhone(payload.to, payload.recipientPhone, payload.chatId, payload.phone);
+  const phone = fromMe ? outboundPhone : inboundPhone;
+  const senderPhone = readPhone(payload.senderPhone, payload.from, payload.participantPhone, payload.author, payload.phone);
+  const recipientPhone = readPhone(payload.to, payload.recipientPhone, payload.phone, payload.chatId);
   const text =
     readText(payload.text) ||
     readText(payload.message) ||
@@ -47,7 +68,26 @@ function extractPayload(payload: Record<string, unknown>) {
   const error = typeof payload.error === "string" ? payload.error : null;
   const ids = Array.isArray(payload.ids) ? payload.ids.map(String) : [];
   const media = extractMedia(payload);
-  return { fromMe, phone: normalizePhone(phone), text: text.trim().slice(0, 4000), messageId, zaapId, senderName, type, status, error, ids, media };
+  const eventKind = fromMe ? "OUTBOUND_FROM_WHATSAPP" : "INBOUND_FROM_CLIENT";
+  return {
+    fromMe,
+    eventKind,
+    phone,
+    senderPhone,
+    recipientPhone,
+    connectedPhone,
+    rawChat,
+    isGroup,
+    text: text.trim().slice(0, 4000),
+    messageId,
+    zaapId,
+    senderName,
+    type,
+    status,
+    error,
+    ids,
+    media,
+  };
 }
 
 function isOfficeName(value: string) {
@@ -319,6 +359,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, event: parsed.type });
   }
 
+  if (parsed.isGroup) return NextResponse.json({ ok: true, ignored: "group_or_broadcast_message" });
+  if (parsed.fromMe && parsed.connectedPhone && parsed.phone === parsed.connectedPhone) {
+    return NextResponse.json({ ok: true, ignored: "sent_by_me_connected_number_only" });
+  }
   if (!parsed.phone || (parsed.text.length < 1 && !parsed.media)) return NextResponse.json({ error: "Invalid Z-API payload" }, { status: 400 });
 
   const supabase = createAdminClient();

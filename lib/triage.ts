@@ -99,6 +99,31 @@ function textForTriage(message: { content: unknown; media_type?: unknown; media_
   return [content, mediaTranscription].filter(Boolean).join("\n");
 }
 
+function botAlreadyAskedIntro(messages: { content: unknown; sender_type: unknown }[]) {
+  return messages.some((message) => {
+    if (message.sender_type !== "BOT") return false;
+    const content = normalizeText(String(message.content || ""));
+    return content.includes("sou a clara") || content.includes("pode me dizer seu nome") || content.includes("poderia me informar seu nome");
+  });
+}
+
+function botAlreadyAskedArea(messages: { content: unknown; sender_type: unknown }[]) {
+  return messages.some((message) => {
+    if (message.sender_type !== "BOT") return false;
+    const content = normalizeText(String(message.content || ""));
+    return content.includes("inss ou aposentadoria") && content.includes("trabalho") && content.includes("civil");
+  });
+}
+
+function isRepeatedPrompt(reply: string, askedIntro: boolean, askedArea: boolean) {
+  const content = normalizeText(reply);
+  if (askedIntro && (content.includes("sou a clara") || content.includes("pode me dizer seu nome") || content.includes("poderia me informar seu nome"))) {
+    return true;
+  }
+  if (askedArea && content.includes("inss ou aposentadoria") && content.includes("trabalho")) return true;
+  return false;
+}
+
 async function routeConversation(conversation: Conversation, area: RoutableArea, confidence: number, summary: string) {
   const supabase = createAdminClient();
   const lawyer = await getLawyerByArea(area);
@@ -158,6 +183,8 @@ export async function classifyAndReply(conversationId: string) {
 
   const ordered = (messages || []).reverse();
   const clientMessages = ordered.filter((message) => message.sender_type === "CLIENT");
+  const askedIntro = botAlreadyAskedIntro(ordered);
+  const askedArea = botAlreadyAskedArea(ordered);
   const clientJoined = clientMessages.map(textForTriage).join("\n").trim();
   const latestClientText = textForTriage(clientMessages.at(-1) || { content: "" });
   if (clientJoined.length < 2) return;
@@ -191,6 +218,7 @@ export async function classifyAndReply(conversationId: string) {
   const normalizedClientText = normalizeText(clientJoined);
   const simpleGreeting = ["oi", "ola", "bom dia", "boa tarde", "boa noite"].includes(normalizedClientText);
   if (clientMessages.length <= 1 && (simpleGreeting || clientJoined.length < 30)) {
+    if (askedIntro) return;
     const { data: contact } = await supabase.from("contacts").select("phone").eq("id", current.contact_id).single();
     await sendAndSaveBotMessages(conversationId, contact?.phone, INITIAL_BOT_MESSAGE);
     return;
@@ -198,7 +226,7 @@ export async function classifyAndReply(conversationId: string) {
 
   let ai;
   try {
-    ai = await classifyWithOpenAI(clientMessages.map((message) => `CLIENT: ${message.content}`));
+    ai = await classifyWithOpenAI(clientMessages.map((message) => `CLIENT: ${textForTriage(message)}`));
   } catch {
     return;
   }
@@ -237,5 +265,7 @@ export async function classifyAndReply(conversationId: string) {
     .eq("id", conversationId);
 
   const { data: contact } = await supabase.from("contacts").select("phone").eq("id", fresh.contact_id).single();
-  await sendAndSaveBotMessages(conversationId, contact?.phone, ai.reply || UNKNOWN_AREA_MESSAGE);
+  const reply = ai.reply || UNKNOWN_AREA_MESSAGE;
+  if (isRepeatedPrompt(reply, askedIntro, askedArea)) return;
+  await sendAndSaveBotMessages(conversationId, contact?.phone, reply);
 }

@@ -81,6 +81,13 @@ const KEYWORDS: Record<RoutableArea, string[]> = {
     "aluguel",
     "familia",
     "separacao",
+    "falecido",
+    "falecida",
+    "espólio",
+    "espolio",
+    "alvara judicial",
+    "ação do falecido",
+    "acao do falecido",
   ],
 };
 

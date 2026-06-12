@@ -50,6 +50,24 @@ function extractPayload(payload: Record<string, unknown>) {
   return { fromMe, phone: normalizePhone(phone), text: text.trim().slice(0, 4000), messageId, zaapId, senderName, type, status, error, ids, media };
 }
 
+function isOfficeName(value: string) {
+  const normalized = value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/&/g, "e")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return normalized.includes("severo") && normalized.includes("lima") && normalized.includes("conceicao");
+}
+
+function cleanContactName(senderName: string) {
+  const name = senderName.trim();
+  if (!name || isOfficeName(name)) return null;
+  return name.slice(0, 120);
+}
+
 function readFirstString(...values: unknown[]) {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) return value.trim();
@@ -173,14 +191,16 @@ async function getOrCreateConversation(
     .maybeSingle();
 
   if (!latestConversation || latestConversation.status === "ENCERRADO") {
+    const returningToResponsible = !outboundFromOwnNumber && latestConversation?.assigned_lawyer_id;
     const { data: created } = await supabase
       .from("conversations")
       .insert({
         contact_id: contactId,
-        ai_enabled: !outboundFromOwnNumber,
-        status: outboundFromOwnNumber ? "EM_ATENDIMENTO" : "BOT_TRIAGEM",
-        assigned_lawyer_id: null,
-        area: "INDEFINIDO",
+        ai_enabled: !outboundFromOwnNumber && !returningToResponsible,
+        status: outboundFromOwnNumber ? "EM_ATENDIMENTO" : returningToResponsible ? "AGUARDANDO_ADVOGADO" : "BOT_TRIAGEM",
+        assigned_lawyer_id: returningToResponsible ? latestConversation.assigned_lawyer_id : null,
+        area: returningToResponsible ? latestConversation.area : "INDEFINIDO",
+        summary: returningToResponsible ? "Cliente retornou por WhatsApp; conversa direcionada automaticamente ao responsável anterior." : null,
         last_message_at: now,
       })
       .select("*")
@@ -216,12 +236,32 @@ export async function POST(request: NextRequest) {
 
   const supabase = createAdminClient();
   const now = new Date().toISOString();
+  const contactName = cleanContactName(parsed.senderName);
 
-  const { data: contact } = await supabase
-    .from("contacts")
-    .upsert({ phone: parsed.phone, name: parsed.senderName || null, updated_at: now }, { onConflict: "phone" })
-    .select("*")
-    .single();
+  const { data: existingContact } = await supabase.from("contacts").select("*").eq("phone", parsed.phone).maybeSingle();
+  let contact = existingContact;
+
+  if (contact) {
+    const shouldReplaceName = contactName && (!contact.name || isOfficeName(String(contact.name)));
+    const shouldClearOfficeName = !contactName && contact.name && isOfficeName(String(contact.name));
+    const { data } = await supabase
+      .from("contacts")
+      .update({
+        name: shouldReplaceName ? contactName : shouldClearOfficeName ? null : contact.name,
+        updated_at: now,
+      })
+      .eq("id", contact.id)
+      .select("*")
+      .single();
+    contact = data;
+  } else {
+    const { data } = await supabase
+      .from("contacts")
+      .insert({ phone: parsed.phone, name: contactName, updated_at: now })
+      .select("*")
+      .single();
+    contact = data;
+  }
 
   if (!contact) return NextResponse.json({ error: "Could not save contact" }, { status: 500 });
 

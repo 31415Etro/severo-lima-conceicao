@@ -68,6 +68,61 @@ function cleanContactName(senderName: string) {
   return name.slice(0, 120);
 }
 
+function normalizeForMatch(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function looksLikeClientName(value: string) {
+  const text = value.trim().replace(/[.,!?;:]+$/g, "");
+  const normalized = normalizeForMatch(text);
+  if (!text || isOfficeName(text)) return false;
+  if (text.length < 5 || text.length > 80) return false;
+  if (!/^[A-Za-zÀ-ÿ' -]+$/.test(text)) return false;
+
+  const blocked = [
+    "oi",
+    "ola",
+    "olá",
+    "bom dia",
+    "boa tarde",
+    "boa noite",
+    "tudo bem",
+    "ok",
+    "sim",
+    "nao",
+    "não",
+    "sou cliente",
+    "ja sou cliente",
+    "já sou cliente",
+    "gostaria",
+    "preciso",
+    "sobre",
+    "acao",
+    "ação",
+    "processo",
+    "falecido",
+    "falecida",
+    "contato",
+    "entrasse",
+    "advogado",
+    "advogada",
+  ];
+  if (blocked.some((word) => normalized.includes(normalizeForMatch(word)))) return false;
+
+  const words = text.split(/\s+/).filter(Boolean);
+  return words.length >= 2 && words.length <= 5 && words.every((word) => word.length >= 2);
+}
+
+function shouldCaptureNameFromMessage(currentName: unknown, messageContent: string) {
+  const current = String(currentName || "");
+  return (!current || isOfficeName(current)) && looksLikeClientName(messageContent);
+}
+
 function readFirstString(...values: unknown[]) {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) return value.trim();
@@ -191,15 +246,24 @@ async function getOrCreateConversation(
     .maybeSingle();
 
   if (!latestConversation || latestConversation.status === "ENCERRADO") {
-    const returningToResponsible = !outboundFromOwnNumber && latestConversation?.assigned_lawyer_id;
+    const { data: latestAssignedConversation } = await supabase
+      .from("conversations")
+      .select("*")
+      .eq("contact_id", contactId)
+      .not("assigned_lawyer_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const previousResponsible = latestConversation?.assigned_lawyer_id ? latestConversation : latestAssignedConversation;
+    const returningToResponsible = !outboundFromOwnNumber && previousResponsible?.assigned_lawyer_id;
     const { data: created } = await supabase
       .from("conversations")
       .insert({
         contact_id: contactId,
         ai_enabled: !outboundFromOwnNumber && !returningToResponsible,
         status: outboundFromOwnNumber ? "EM_ATENDIMENTO" : returningToResponsible ? "AGUARDANDO_ADVOGADO" : "BOT_TRIAGEM",
-        assigned_lawyer_id: returningToResponsible ? latestConversation.assigned_lawyer_id : null,
-        area: returningToResponsible ? latestConversation.area : "INDEFINIDO",
+        assigned_lawyer_id: returningToResponsible ? previousResponsible.assigned_lawyer_id : null,
+        area: returningToResponsible ? previousResponsible.area : "INDEFINIDO",
         summary: returningToResponsible ? "Cliente retornou por WhatsApp; conversa direcionada automaticamente ao responsável anterior." : null,
         last_message_at: now,
       })
@@ -284,6 +348,17 @@ export async function POST(request: NextRequest) {
     messageContent = parsed.media.caption || parsed.text || "Imagem recebida.";
   } else if (parsed.media && !messageContent) {
     messageContent = `${parsed.media.type === "DOCUMENT" ? "Documento" : "Arquivo"} recebido${parsed.media.filename ? `: ${parsed.media.filename}` : "."}`;
+  }
+
+  if (!parsed.fromMe && shouldCaptureNameFromMessage(contact.name, messageContent)) {
+    const capturedName = messageContent.trim().replace(/[.,!?;:]+$/g, "").slice(0, 120);
+    const { data: renamedContact } = await supabase
+      .from("contacts")
+      .update({ name: capturedName, updated_at: now })
+      .eq("id", contact.id)
+      .select("*")
+      .single();
+    if (renamedContact) contact = renamedContact;
   }
 
   if (parsed.fromMe) {

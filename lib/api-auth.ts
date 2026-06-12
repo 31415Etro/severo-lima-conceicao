@@ -27,7 +27,8 @@ export async function loadConversationForApi(id: string, profile: Profile) {
   const admin = createAdminClient();
   const { data: conversation } = await admin.from("conversations").select("*").eq("id", id).single();
   if (!conversation) return { response: NextResponse.json({ error: "Conversation not found" }, { status: 404 }) };
-  if (profile.role !== "ADMIN" && conversation.assigned_lawyer_id !== profile.id) {
+  const sharedUnassigned = !conversation.assigned_lawyer_id && ["INDEFINIDO", "FORA_ESCOPO"].includes(conversation.area);
+  if (profile.role !== "ADMIN" && conversation.assigned_lawyer_id !== profile.id && !sharedUnassigned) {
     return { response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
   return { conversation, admin };

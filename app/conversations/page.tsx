@@ -37,7 +37,9 @@ export default async function ConversationsPage({
     .select("id,area,status,ai_enabled,unread_count,last_message_at,contacts(name,phone),profiles(name),messages(content,created_at)")
     .order("last_message_at", { ascending: false });
 
-  if (profile.role !== "ADMIN") query = query.eq("assigned_lawyer_id", profile.id);
+  if (profile.role !== "ADMIN") {
+    query = query.or(`assigned_lawyer_id.eq.${profile.id},and(assigned_lawyer_id.is.null,area.in.(INDEFINIDO,FORA_ESCOPO))`);
+  }
   if (params.status) query = query.eq("status", params.status);
   if (params.area) query = query.eq("area", params.area);
   if (params.lawyer && profile.role === "ADMIN") query = query.eq("assigned_lawyer_id", params.lawyer);

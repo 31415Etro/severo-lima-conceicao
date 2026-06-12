@@ -34,7 +34,8 @@ export async function requireProfile() {
 
 export function canAccessConversation(
   profile: Pick<Profile, "id" | "role">,
-  assignedLawyerId: string | null
+  assignedLawyerId: string | null,
+  area?: string | null
 ) {
-  return profile.role === "ADMIN" || assignedLawyerId === profile.id;
+  return profile.role === "ADMIN" || assignedLawyerId === profile.id || (!assignedLawyerId && (area === "INDEFINIDO" || area === "FORA_ESCOPO"));
 }

@@ -27,7 +27,8 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
     .single();
 
   if (!conversation) notFound();
-  if (profile.role !== "ADMIN" && conversation.assigned_lawyer_id !== profile.id) redirect("/conversations");
+  const sharedUnassigned = !conversation.assigned_lawyer_id && ["INDEFINIDO", "FORA_ESCOPO"].includes(conversation.area);
+  if (profile.role !== "ADMIN" && conversation.assigned_lawyer_id !== profile.id && !sharedUnassigned) redirect("/conversations");
 
   await supabase.from("conversations").update({ unread_count: 0 }).eq("id", id);
 

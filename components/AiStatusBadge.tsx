@@ -5,7 +5,7 @@ export function AiStatusBadge({ enabled }: { enabled: boolean }) {
         enabled ? "bg-navySoft text-navy border-[#c8d0e6]" : "bg-slate-100 text-slate-600 border-slate-200"
       }`}
     >
-      IA {enabled ? "ligada" : "desligada"}
+      Clara {enabled ? "ativa" : "pausada"}
     </span>
   );
 }

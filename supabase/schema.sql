@@ -165,7 +165,10 @@ for all using (current_user_is_admin()) with check (current_user_is_admin());
 
 drop policy if exists conversations_lawyer_select_assigned on conversations;
 create policy conversations_lawyer_select_assigned on conversations
-for select using (assigned_lawyer_id = auth.uid());
+for select using (
+  assigned_lawyer_id = auth.uid()
+  or (assigned_lawyer_id is null and area in ('INDEFINIDO','FORA_ESCOPO'))
+);
 
 drop policy if exists conversations_lawyer_update_assigned on conversations;
 create policy conversations_lawyer_update_assigned on conversations
@@ -182,7 +185,10 @@ for select using (
   exists (
     select 1 from conversations
     where conversations.id = messages.conversation_id
-      and conversations.assigned_lawyer_id = auth.uid()
+      and (
+        conversations.assigned_lawyer_id = auth.uid()
+        or (conversations.assigned_lawyer_id is null and conversations.area in ('INDEFINIDO','FORA_ESCOPO'))
+      )
   )
 );
 
@@ -208,7 +214,10 @@ for select using (
   exists (
     select 1 from conversations
     where conversations.id = ai_logs.conversation_id
-      and conversations.assigned_lawyer_id = auth.uid()
+      and (
+        conversations.assigned_lawyer_id = auth.uid()
+        or (conversations.assigned_lawyer_id is null and conversations.area in ('INDEFINIDO','FORA_ESCOPO'))
+      )
   )
 );
 

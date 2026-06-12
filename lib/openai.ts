@@ -82,11 +82,15 @@ export async function classifyWithOpenAI(messages: string[]): Promise<AiClassifi
 
   if (!apiKey) throw new Error("OPENAI_API_KEY is missing.");
 
-  const compactMessages = messages
-    .slice(-6)
-    .map((message) => message.slice(0, 700))
+  const contextMessage = messages.find((message) => message.startsWith("CONTEXTO DA CONVERSA:"));
+  const recentMessages = messages
+    .filter((message) => message !== contextMessage)
+    .slice(-16)
+    .map((message) => message.slice(0, 900));
+  const compactMessages = [contextMessage?.slice(0, 1800), ...recentMessages]
+    .filter(Boolean)
     .join("\n")
-    .slice(0, 3000);
+    .slice(0, 8000);
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",

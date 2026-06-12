@@ -159,6 +159,28 @@ function formatConversationForAi(message: { content: unknown; sender_type: unkno
   return `EQUIPE: ${content}`;
 }
 
+function buildConversationMemory(conversation: Conversation, messages: { content: unknown; sender_type: unknown }[]) {
+  const lastBot = [...messages].reverse().find((message) => message.sender_type === "BOT");
+  const lastClient = [...messages].reverse().find((message) => message.sender_type === "CLIENT");
+  const botQuestions = messages
+    .filter((message) => message.sender_type === "BOT")
+    .map((message) => String(message.content || "").trim())
+    .filter(Boolean)
+    .slice(-3);
+
+  return [
+    "CONTEXTO DA CONVERSA:",
+    `Status atual: ${conversation.status}`,
+    `Área atual: ${conversation.area}`,
+    `IA ligada: ${conversation.ai_enabled ? "sim" : "não"}`,
+    `Resumo interno atual: ${conversation.summary || "ainda sem resumo"}`,
+    `Última fala do cliente: ${lastClient ? String(lastClient.content || "").trim() : "nenhuma"}`,
+    `Última resposta da Clara: ${lastBot ? String(lastBot.content || "").trim() : "nenhuma"}`,
+    botQuestions.length ? `Perguntas recentes já feitas pela Clara: ${botQuestions.join(" | ")}` : "Perguntas recentes já feitas pela Clara: nenhuma",
+    "Use esse contexto para continuar a conversa sem reiniciar, sem repetir perguntas e sem ignorar o que já aconteceu.",
+  ].join("\n");
+}
+
 async function routeConversation(conversation: Conversation, area: RoutableArea, confidence: number, summary: string) {
   const supabase = createAdminClient();
   const lawyer = await getLawyerByArea(area);
@@ -238,7 +260,7 @@ export async function classifyAndReply(conversationId: string) {
     .select("content,sender_type,created_at,media_type,media_transcription")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
-    .limit(8);
+    .limit(24);
 
   const ordered = (messages || []).reverse();
   const clientMessages = ordered.filter((message) => message.sender_type === "CLIENT");
@@ -299,9 +321,12 @@ export async function classifyAndReply(conversationId: string) {
   let ai;
   try {
     ai = await classifyWithOpenAI(
-      ordered
+      [
+        buildConversationMemory(current, ordered),
+        ...ordered
         .map(formatConversationForAi)
-        .filter(Boolean)
+        .filter(Boolean),
+      ]
     );
   } catch {
     return;

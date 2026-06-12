@@ -76,6 +76,30 @@ function findMediaUrl(source: Record<string, unknown>) {
   );
 }
 
+function inferMediaType(source: Record<string, unknown>, fallbackType: string) {
+  const declared = [
+    fallbackType,
+    source.type,
+    source.mediaType,
+    source.messageType,
+    source.mimeType,
+    source.mimetype,
+    source.contentType,
+  ]
+    .map((value) => String(value || "").toUpperCase())
+    .join(" ");
+
+  if (declared.includes("IMAGE") || declared.includes("IMG") || declared.includes("JPEG") || declared.includes("PNG") || declared.includes("WEBP")) return "IMAGE";
+  if (declared.includes("AUDIO") || declared.includes("PTT") || declared.includes("OGG") || declared.includes("OPUS") || declared.includes("MP3") || declared.includes("WAV")) return "AUDIO";
+  if (declared.includes("VIDEO") || declared.includes("MP4")) return "VIDEO";
+  if (declared.includes("DOCUMENT") || declared.includes("PDF") || declared.includes("FILE")) return "DOCUMENT";
+  if (readFirstString(source.imageUrl, source.thumbnailUrl)) return "IMAGE";
+  if (readFirstString(source.audioUrl)) return "AUDIO";
+  if (readFirstString(source.videoUrl)) return "VIDEO";
+  if (readFirstString(source.documentUrl, source.fileUrl, source.downloadUrl)) return "DOCUMENT";
+  return "DOCUMENT";
+}
+
 function extractMedia(payload: Record<string, unknown>) {
   const sources = [
     { type: "IMAGE", data: asObject(payload.image) },
@@ -86,13 +110,13 @@ function extractMedia(payload: Record<string, unknown>) {
     { type: "AUDIO", data: asObject(payload.audioMessage) },
     { type: "VIDEO", data: asObject(payload.videoMessage) },
     { type: "DOCUMENT", data: asObject(payload.documentMessage) },
-    { type: String(payload.type || "").toUpperCase(), data: payload },
+    { type: String(payload.type || payload.mediaType || payload.messageType || "").toUpperCase(), data: payload },
   ];
 
   for (const source of sources) {
     const url = findMediaUrl(source.data);
     if (!url) continue;
-    const normalizedType = ["IMAGE", "AUDIO", "VIDEO", "DOCUMENT"].includes(source.type) ? source.type : "DOCUMENT";
+    const normalizedType = inferMediaType(source.data, source.type);
     return {
       type: normalizedType as "IMAGE" | "AUDIO" | "VIDEO" | "DOCUMENT",
       url,
@@ -213,11 +237,11 @@ export async function POST(request: NextRequest) {
 
   if (parsed.media?.type === "AUDIO") {
     mediaTranscription = await transcribeAudioFromUrl(parsed.media.url);
-    messageContent = mediaTranscription ? `Audio transcrito: ${mediaTranscription}` : "Audio recebido.";
+    messageContent = "Áudio recebido.";
   } else if (parsed.media?.type === "IMAGE") {
     const description = await describeImageFromUrl(parsed.media.url, parsed.media.caption || parsed.text);
     mediaTranscription = description;
-    messageContent = [parsed.media.caption || parsed.text, description ? `Imagem recebida: ${description}` : "Imagem recebida."].filter(Boolean).join("\n");
+    messageContent = parsed.media.caption || parsed.text || "Imagem recebida.";
   } else if (parsed.media && !messageContent) {
     messageContent = `${parsed.media.type === "DOCUMENT" ? "Documento" : "Arquivo"} recebido${parsed.media.filename ? `: ${parsed.media.filename}` : "."}`;
   }

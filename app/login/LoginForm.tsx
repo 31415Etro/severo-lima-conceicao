@@ -45,29 +45,23 @@ export function LoginForm() {
 
   return (
     <form onSubmit={submit} className="panel w-full max-w-md overflow-hidden">
-      <div className="bg-navy px-6 py-6 text-white">
-        <p className="text-xs uppercase tracking-[0.18em] text-white/70">Atendimento juridico</p>
-        <h1 className="mt-2 text-2xl font-semibold">Severo, Lima & Conceicao</h1>
-        <p className="mt-2 text-sm text-white/75">Acesse as conversas direcionadas para voce.</p>
+      <div className="flex justify-center bg-navy px-6 py-7">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.png" alt="Severo, Lima & Conceicao" className="h-20 w-auto max-w-full object-contain" />
       </div>
       <div className="p-6">
-      <div className="rounded border border-[#c8d0e6] bg-navySoft p-3 text-sm text-navy">
-        <p className="font-semibold">Usuario de teste</p>
-        <p>E-mail: advogado@teste.com</p>
-        <p>Senha: teste123</p>
-      </div>
-      <label className="mt-6 block text-sm font-medium text-ink">
-        E-mail
-        <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" className="mt-1 w-full rounded border border-line px-3 py-2" required />
-      </label>
-      <label className="mt-4 block text-sm font-medium text-ink">
-        Senha
-        <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" className="mt-1 w-full rounded border border-line px-3 py-2" required />
-      </label>
-      {error && <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-      <button disabled={busy} className="mt-6 w-full rounded bg-navy px-4 py-3 font-medium text-white transition hover:bg-navyDark disabled:opacity-60">
-        Entrar
-      </button>
+        <label className="block text-sm font-medium text-ink">
+          E-mail
+          <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" className="mt-1 w-full rounded border border-line px-3 py-2" required />
+        </label>
+        <label className="mt-4 block text-sm font-medium text-ink">
+          Senha
+          <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" className="mt-1 w-full rounded border border-line px-3 py-2" required />
+        </label>
+        {error && <p className="mt-4 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        <button disabled={busy} className="mt-6 w-full rounded bg-navy px-4 py-3 font-medium text-white transition hover:bg-navyDark disabled:opacity-60">
+          Entrar
+        </button>
       </div>
     </form>
   );

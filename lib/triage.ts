@@ -47,18 +47,24 @@ async function saveBotMessage(
 }
 
 function splitBotReply(message: string) {
-  const blocks = message
+  const normalized = message
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  const blocks = normalized
     .split(/\n{2,}/)
     .map((part) => part.trim())
     .filter(Boolean);
   if (blocks.length > 1) return blocks.slice(0, 3);
 
-  if (message.length <= 170) return [message];
-  const sentences = message.match(/[^.!?]+[.!?]+/g)?.map((part) => part.trim()).filter(Boolean) || [message];
+  if (normalized.length <= 160) return [normalized];
+  const sentences = normalized.match(/[^.!?]+[.!?]+/g)?.map((part) => part.trim()).filter(Boolean) || [normalized];
   const chunks: string[] = [];
   for (const sentence of sentences) {
     const last = chunks[chunks.length - 1];
-    if (last && `${last} ${sentence}`.length <= 170) {
+    if (last && `${last} ${sentence}`.length <= 160) {
       chunks[chunks.length - 1] = `${last} ${sentence}`;
     } else {
       chunks.push(sentence);
@@ -67,11 +73,30 @@ function splitBotReply(message: string) {
   return chunks.slice(0, 3);
 }
 
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function sendAndSaveBotMessages(conversationId: string, phone: string | null | undefined, message: string) {
-  for (const chunk of splitBotReply(message)) {
+  const chunks = splitBotReply(message);
+  for (const [index, chunk] of chunks.entries()) {
+    if (index > 0 && phone) await wait(700);
     const result = phone ? await sendWhatsAppMessage(phone, chunk) : null;
     await saveBotMessage(conversationId, chunk, result?.ok ? result.data : undefined, result && !result.ok ? result.error : undefined);
   }
+}
+
+function textForTriage(message: { content: unknown; media_type?: unknown; media_transcription?: unknown }) {
+  const content = String(message.content || "").trim();
+  const mediaTranscription = String(message.media_transcription || "").trim();
+  if (!mediaTranscription) return content;
+
+  if (message.media_type === "AUDIO") return `Áudio do cliente transcrito: ${mediaTranscription}`;
+  if (message.media_type === "IMAGE") {
+    const caption = content && content !== "Imagem recebida." ? `Legenda do cliente: ${content}\n` : "";
+    return `${caption}Imagem recebida: ${mediaTranscription}`;
+  }
+  return [content, mediaTranscription].filter(Boolean).join("\n");
 }
 
 async function routeConversation(conversation: Conversation, area: RoutableArea, confidence: number, summary: string) {
@@ -126,15 +151,15 @@ export async function classifyAndReply(conversationId: string) {
 
   const { data: messages } = await supabase
     .from("messages")
-    .select("content,sender_type,created_at")
+    .select("content,sender_type,created_at,media_type,media_transcription")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
     .limit(8);
 
   const ordered = (messages || []).reverse();
   const clientMessages = ordered.filter((message) => message.sender_type === "CLIENT");
-  const clientJoined = clientMessages.map((message) => String(message.content || "")).join("\n").trim();
-  const latestClientText = String(clientMessages.at(-1)?.content || "").trim();
+  const clientJoined = clientMessages.map(textForTriage).join("\n").trim();
+  const latestClientText = textForTriage(clientMessages.at(-1) || { content: "" });
   if (clientJoined.length < 2) return;
 
   const latestKeyword = classifyByKeywords(latestClientText);

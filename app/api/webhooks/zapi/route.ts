@@ -41,6 +41,16 @@ function isGroupOrBroadcast(value: unknown) {
   return text.includes("@g.us") || text.includes("group") || text.includes("broadcast") || text.includes("status@broadcast");
 }
 
+function getTriageDebounceMs() {
+  const configured = Number(process.env.TRIAGE_DEBOUNCE_MS || process.env.ZAPI_TRIAGE_DEBOUNCE_MS || 8000);
+  if (!Number.isFinite(configured)) return 8000;
+  return Math.max(0, Math.min(30000, configured));
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function extractPayload(payload: Record<string, unknown>) {
   const fromMe = payload.fromMe === true || payload.fromMe === "true";
   const rawChat = String(payload.chatId || payload.chat || payload.from || payload.to || "");
@@ -294,6 +304,28 @@ async function hasClientConversationHistory(supabase: ReturnType<typeof createAd
   return Boolean(clientMessage);
 }
 
+async function shouldCurrentMessageTriggerAi(
+  supabase: ReturnType<typeof createAdminClient>,
+  conversationId: string,
+  message: { id: string; created_at: string }
+) {
+  const debounceMs = getTriageDebounceMs();
+  if (debounceMs <= 0) return true;
+
+  await wait(debounceMs);
+
+  const { data: newerClientMessage } = await supabase
+    .from("messages")
+    .select("id")
+    .eq("conversation_id", conversationId)
+    .eq("sender_type", "CLIENT")
+    .gt("created_at", message.created_at)
+    .limit(1)
+    .maybeSingle();
+
+  return !newerClientMessage;
+}
+
 async function getOrCreateConversation(
   supabase: ReturnType<typeof createAdminClient>,
   contactId: string,
@@ -463,20 +495,28 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, event: "sent_by_me" });
   }
 
-  await supabase.from("messages").insert({
-    conversation_id: conversation.id,
-    sender_type: "CLIENT",
-    direction: "INBOUND",
-    content: messageContent,
-    media_type: parsed.media?.type || "TEXT",
-    media_url: parsed.media?.url || null,
-    media_mime_type: parsed.media?.mimeType || null,
-    media_filename: parsed.media?.filename || null,
-    media_transcription: mediaTranscription,
-    zapi_message_id: parsed.messageId || null,
-    zapi_zaap_id: parsed.zaapId || null,
-    delivery_status: "RECEIVED",
-  });
+  const { data: savedMessage, error: saveMessageError } = await supabase
+    .from("messages")
+    .insert({
+      conversation_id: conversation.id,
+      sender_type: "CLIENT",
+      direction: "INBOUND",
+      content: messageContent,
+      media_type: parsed.media?.type || "TEXT",
+      media_url: parsed.media?.url || null,
+      media_mime_type: parsed.media?.mimeType || null,
+      media_filename: parsed.media?.filename || null,
+      media_transcription: mediaTranscription,
+      zapi_message_id: parsed.messageId || null,
+      zapi_zaap_id: parsed.zaapId || null,
+      delivery_status: "RECEIVED",
+    })
+    .select("id,created_at")
+    .single();
+
+  if (saveMessageError || !savedMessage) {
+    return NextResponse.json({ error: "Could not save message" }, { status: 500 });
+  }
 
   await supabase
     .from("conversations")
@@ -491,6 +531,9 @@ export async function POST(request: NextRequest) {
   if (conversation.status !== "BOT_TRIAGEM") return NextResponse.json({ ok: true, ai: "status_skip" });
   if (conversation.assigned_lawyer_id) return NextResponse.json({ ok: true, ai: "assigned_skip" });
   if (messageContent.length < 2) return NextResponse.json({ ok: true, ai: "short_skip" });
+
+  const shouldTriggerAi = await shouldCurrentMessageTriggerAi(supabase, conversation.id, savedMessage);
+  if (!shouldTriggerAi) return NextResponse.json({ ok: true, ai: "debounced_skip" });
 
   await classifyAndReply(conversation.id);
   return NextResponse.json({ ok: true });

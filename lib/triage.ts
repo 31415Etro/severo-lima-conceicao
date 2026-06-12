@@ -117,7 +117,13 @@ function botAlreadyAskedIntro(messages: { content: unknown; sender_type: unknown
   return messages.some((message) => {
     if (message.sender_type !== "BOT") return false;
     const content = normalizeText(String(message.content || ""));
-    return content.includes("sou a clara") || content.includes("pode me dizer seu nome") || content.includes("poderia me informar seu nome");
+    return (
+      content.includes("sou a clara") ||
+      content.includes("pode me dizer seu nome") ||
+      content.includes("poderia me informar seu nome") ||
+      content.includes("se voce ja e cliente") ||
+      content.includes("se for um novo caso")
+    );
   });
 }
 
@@ -136,6 +142,21 @@ function isRepeatedPrompt(reply: string, askedIntro: boolean, askedArea: boolean
   }
   if (askedArea && content.includes("inss ou aposentadoria") && content.includes("trabalho")) return true;
   return false;
+}
+
+function botAlreadySentReply(messages: { content: unknown; sender_type: unknown }[], reply: string) {
+  const normalizedReply = normalizeText(reply);
+  if (!normalizedReply) return true;
+  return messages.some((message) => message.sender_type === "BOT" && normalizeText(String(message.content || "")) === normalizedReply);
+}
+
+function formatConversationForAi(message: { content: unknown; sender_type: unknown; media_type?: unknown; media_transcription?: unknown }) {
+  const content = textForTriage(message);
+  if (!content) return "";
+  if (message.sender_type === "CLIENT") return `CLIENTE: ${content}`;
+  if (message.sender_type === "BOT") return `CLARA: ${content}`;
+  if (message.sender_type === "LAWYER") return `ADVOGADO: ${content}`;
+  return `EQUIPE: ${content}`;
 }
 
 async function routeConversation(conversation: Conversation, area: RoutableArea, confidence: number, summary: string) {
@@ -277,7 +298,11 @@ export async function classifyAndReply(conversationId: string) {
 
   let ai;
   try {
-    ai = await classifyWithOpenAI(clientMessages.map((message) => `CLIENT: ${textForTriage(message)}`));
+    ai = await classifyWithOpenAI(
+      ordered
+        .map(formatConversationForAi)
+        .filter(Boolean)
+    );
   } catch {
     return;
   }
@@ -318,5 +343,6 @@ export async function classifyAndReply(conversationId: string) {
   const { data: contact } = await supabase.from("contacts").select("phone").eq("id", fresh.contact_id).single();
   const reply = ai.reply || UNKNOWN_AREA_MESSAGE;
   if (isRepeatedPrompt(reply, askedIntro, askedArea)) return;
+  if (botAlreadySentReply(ordered, reply)) return;
   await sendAndSaveBotMessages(conversationId, contact?.phone, reply);
 }
